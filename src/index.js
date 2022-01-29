@@ -1,4 +1,4 @@
-import express, { json } from "express";
+import express from "express";
 import { MongoClient } from "mongodb";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -8,7 +8,7 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(json());
+app.use(express.json());
 
 const participantSchema = joi.object({
   name: joi.string().required(),
@@ -117,8 +117,20 @@ app.post("/messages", async (req, res) => {
 });
 
 app.get("/messages", async (req, res) => {
+  const limit = parseInt(req.query.limit);
+  const user = req.headers.user;
+
   try {
-    const listMessages = await db.collection("messages").find().toArray();
+    let listMessages = (
+      await db.collection("messages").find().toArray()
+    ).reverse();
+    listMessages = listMessages.filter(
+      (message) => message.to === user || message.from === user
+    );
+
+    if (limit) {
+      listMessages = listMessages.slice(0, limit);
+    }
     res.send(listMessages);
   } catch (err) {
     res.sendStatus(500);
@@ -126,21 +138,40 @@ app.get("/messages", async (req, res) => {
   }
 });
 
-app.post("/post", async (req, res) => {
+app.post("/status", async (req, res) => {
+  const user = req.headers.user;
+  console.log(user);
+
   try {
-    const status = await db
+    const participant = await db
       .collection("participant")
-      .find({ name: req.headers.user })
+      .find({ name: user })
       .toArray();
-    if (status.length !== 0) {
-      res.sendStatus(200);
+
+    if (participant.length > 0) {
+      try {
+        const status = await db.collection("participant").updateOne(
+          {
+            _id: participant[0]._id,
+          },
+          { $set: { lastStatus: Date.now() } }
+        );
+        if (status) {
+          const participant2 = await db
+            .collection("participant")
+            .find({ name: user })
+            .toArray();
+          console.log(participant2);
+          res.sendStatus(200);
+        }
+      } catch {
+        res.sendStatus(500);
+      }
     } else {
       res.sendStatus(404);
     }
-    mongoClient.close();
   } catch (err) {
-    res.sendStatus(404);
-    mongoClient.close();
+    res.sendStatus(500);
   }
 });
 

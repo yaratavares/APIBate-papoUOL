@@ -22,21 +22,30 @@ async function updateParticipants() {
   try {
     const participants = await db.collection("participant").find().toArray();
 
-    participants.map(async (participant) => {
-      const time = (Date.now() - participant.lastStatus) * 0.001;
+    const promise = new Promise(() => {
+      participants.map(async (participant) => {
+        const time = (Date.now() - participant.lastStatus) * 0.001;
 
-      if (time > 10) {
-        await db.collection("participant").deleteOne({ _id: participant._id });
-        await db.collection("messages").insertOne({
-          from: participant.name,
-          to: "Todos",
-          text: "sai da sala...",
-          type: "status",
-          time: dayjs().format("HH:mm:ss").toString(),
-        });
-      }
-      mongoClient.close();
+        if (time > 10) {
+          try {
+            await db
+              .collection("participant")
+              .deleteOne({ _id: participant._id });
+            await db.collection("messages").insertOne({
+              from: participant.name,
+              to: "Todos",
+              text: "sai da sala...",
+              type: "status",
+              time: dayjs().format("HH:mm:ss").toString(),
+            });
+          } catch (err) {
+            mongoClient.close();
+            console.log(err);
+          }
+        }
+      });
     });
+    promise.then(() => mongoClient.close());
   } catch (err) {
     mongoClient.close();
     console.log(err);
@@ -161,11 +170,17 @@ app.get("/messages", async (req, res) => {
 
 app.post("/messages", async (req, res) => {
   const { mongoClient, db } = await connectMongo(res);
-  // sanitizar todos os parâmetros de mensagem
-  // ---
-  // const messageTrated = stripHtml(req.body.text);
-  // const participant = { name: nameTreated.result.trim() };
-  const message = { ...req.body, from: req.headers.user };
+
+  let messageTreated = { ...req.body, from: req.headers.user };
+
+  for (let parameter in messageTreated) {
+    messageTreated = {
+      ...messageTreated,
+      [parameter]: stripHtml(messageTreated[parameter]).result.trim(),
+    };
+  }
+
+  const message = { ...messageTreated };
 
   const validation = messageSchema.validate(message, { abortEarly: false });
   if (validation.error) {
@@ -174,7 +189,7 @@ app.post("/messages", async (req, res) => {
     res.status(422).send(err);
     return;
   }
-  // type não pode ser private se o "to" for "todos"
+  console.log(message);
   const participantLogged = await db
     .collection("participant")
     .find({ name: message.from })
@@ -251,12 +266,15 @@ app.post("/status", async (req, res) => {
         { $set: { lastStatus: Date.now() } }
       );
       if (status) {
+        mongoClient.close();
         res.sendStatus(200);
       }
     } else {
+      mongoClient.close();
       res.sendStatus(404);
     }
-  } catch (err) {
+  } catch {
+    mongoClient.close();
     res.sendStatus(500);
   }
 });

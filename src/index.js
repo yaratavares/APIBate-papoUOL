@@ -24,9 +24,40 @@ const messageSchema = joi.object({
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 let db;
 
-mongoClient.connect().then(() => {
+mongoClient.connect().then(async () => {
   db = mongoClient.db("batepapo_uol");
 });
+
+setInterval(updateParticipants, 15000);
+
+async function updateParticipants() {
+  try {
+    const participants = await db.collection("participant").find().toArray();
+
+    participants.map(async (participant) => {
+      const time = Date.now() - participant.lastStatus;
+
+      if (time > 10) {
+        try {
+          await db
+            .collection("participant")
+            .deleteOne({ _id: participant._id });
+          await db.collection("messages").insertOne({
+            from: participant.name,
+            to: "Todos",
+            text: "sai da sala...",
+            type: "status",
+            time: dayjs().format("HH:mm:ss").toString(),
+          });
+        } catch (err) {
+          console.log(err);
+        }
+      }
+    });
+  } catch (err) {
+    console.log(err);
+  }
+}
 
 app.get("/participants", async (req, res) => {
   try {
@@ -86,7 +117,7 @@ app.post("/participants", async (req, res) => {
 
 app.post("/messages", async (req, res) => {
   const message = { ...req.body, from: req.headers.user };
-  console.log(message);
+
   const validation = messageSchema.validate(message, { abortEarly: false });
   if (validation.error) {
     const err = validation.error.details.map((detail) => detail.message);
@@ -121,15 +152,14 @@ app.get("/messages", async (req, res) => {
   const user = req.headers.user;
 
   try {
-    let listMessages = (
-      await db.collection("messages").find().toArray()
-    ).reverse();
+    let listMessages = await db.collection("messages").find().toArray();
     listMessages = listMessages.filter(
-      (message) => message.to === user || message.from === user
+      (message) =>
+        message.to === user || message.to === "Todos" || message.from === user
     );
 
     if (limit) {
-      listMessages = listMessages.slice(0, limit);
+      listMessages = listMessages.slice(-limit);
     }
     res.send(listMessages);
   } catch (err) {
@@ -157,11 +187,6 @@ app.post("/status", async (req, res) => {
           { $set: { lastStatus: Date.now() } }
         );
         if (status) {
-          const participant2 = await db
-            .collection("participant")
-            .find({ name: user })
-            .toArray();
-          console.log(participant2);
           res.sendStatus(200);
         }
       } catch {
@@ -175,6 +200,6 @@ app.post("/status", async (req, res) => {
   }
 });
 
-app.listen(4000, () => {
-  console.log("Servidor rodando na porta 4000");
+app.listen(5000, () => {
+  console.log("Servidor rodando na porta 5000");
 });

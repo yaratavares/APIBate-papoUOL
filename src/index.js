@@ -1,9 +1,13 @@
 import express from "express";
-import { MongoClient } from "mongodb";
 import cors from "cors";
-import dotenv from "dotenv";
+
+import { stripHtml } from "string-strip-html";
 import dayjs from "dayjs";
 import joi from "joi";
+
+import { MongoClient } from "mongodb";
+import dotenv from "dotenv";
+import { ObjectID } from "bson";
 dotenv.config();
 
 const app = express();
@@ -24,9 +28,12 @@ const messageSchema = joi.object({
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 let db;
 
-mongoClient.connect().then(async () => {
-  db = mongoClient.db("batepapo_uol");
-});
+mongoClient
+  .connect()
+  .then(() => {
+    db = mongoClient.db("batepapo_uol");
+  })
+  .catch((err) => console.log(err));
 
 setInterval(updateParticipants, 15000);
 
@@ -35,7 +42,7 @@ async function updateParticipants() {
     const participants = await db.collection("participant").find().toArray();
 
     participants.map(async (participant) => {
-      const time = Date.now() - participant.lastStatus;
+      const time = (Date.now() - participant.lastStatus) * 0.001;
 
       if (time > 10) {
         try {
@@ -73,7 +80,8 @@ app.get("/participants", async (req, res) => {
 });
 
 app.post("/participants", async (req, res) => {
-  const participant = req.body;
+  const nameTreated = stripHtml(req.body.name);
+  const participant = { name: nameTreated.result.trim() };
 
   const validation = participantSchema.validate(participant, {
     abortEarly: false,
@@ -116,6 +124,10 @@ app.post("/participants", async (req, res) => {
 });
 
 app.post("/messages", async (req, res) => {
+  // sanitizar todos os parâmetros de mensagem
+  // ---
+  // const messageTrated = stripHtml(req.body.text);
+  // const participant = { name: nameTreated.result.trim() };
   const message = { ...req.body, from: req.headers.user };
 
   const validation = messageSchema.validate(message, { abortEarly: false });
@@ -168,9 +180,35 @@ app.get("/messages", async (req, res) => {
   }
 });
 
+app.delete("/messages/:idMessage", async (req, res) => {
+  const user = req.headers.user;
+  const { idMessage } = req.params;
+
+  try {
+    const messageExist = await db
+      .collection("messages")
+      .find({ _id: new ObjectID(idMessage) })
+      .toArray();
+
+    if (messageExist.length === 0) {
+      res.sendStatus(404);
+    } else if (messageExist[0].from !== user) {
+      res.sendStatus(401);
+    } else {
+      await db
+        .collection("messages")
+        .deleteOne({ _id: new ObjectID(idMessage) });
+      res.sendStatus(200);
+    }
+  } catch (err) {
+    res.sendStatus(500);
+  }
+});
+
+app.put("/messages/:idMessage", (req, res) => {});
+
 app.post("/status", async (req, res) => {
   const user = req.headers.user;
-  console.log(user);
 
   try {
     const participant = await db

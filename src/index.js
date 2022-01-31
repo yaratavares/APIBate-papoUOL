@@ -189,7 +189,7 @@ app.post("/messages", async (req, res) => {
     res.status(422).send(err);
     return;
   }
-  console.log(message);
+
   const participantLogged = await db
     .collection("participant")
     .find({ name: message.from })
@@ -239,13 +239,55 @@ app.delete("/messages/:idMessage", async (req, res) => {
       mongoClient.close();
       res.sendStatus(200);
     }
-  } catch (err) {
+  } catch {
     mongoClient.close();
     res.sendStatus(500);
   }
 });
 
-app.put("/messages/:idMessage", (req, res) => {});
+app.put("/messages/:idMessage", async (req, res) => {
+  const { mongoClient, db } = await connectMongo(res);
+
+  const user = req.headers.user;
+  const { idMessage } = req.params;
+
+  const message = { ...req.body, from: user };
+
+  const validation = messageSchema.validate(message, { abortEarly: false });
+  if (validation.error) {
+    const err = validation.error.details.map((detail) => detail.message);
+    mongoClient.close();
+    res.status(422).send(err);
+    return;
+  }
+
+  try {
+    const messageExist = await db
+      .collection("messages")
+      .find({ _id: new ObjectID(idMessage) })
+      .toArray();
+
+    if (messageExist.length === 0) {
+      mongoClient.close();
+      res.sendStatus(404);
+    } else if (messageExist[0].from !== user) {
+      mongoClient.close();
+      res.sendStatus(401);
+    } else {
+      await db
+        .collection("messages")
+        .updateOne(
+          { _id: new ObjectID(idMessage) },
+          { $set: { ...message, time: dayjs().format("HH:mm:ss").toString() } }
+        );
+      mongoClient.close();
+      res.sendStatus(200);
+    }
+  } catch {
+    mongoClient.close();
+    res.sendStatus(500);
+  }
+});
 
 app.post("/status", async (req, res) => {
   const { mongoClient, db } = await connectMongo(res);

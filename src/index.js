@@ -5,9 +5,8 @@ import { stripHtml } from "string-strip-html";
 import dayjs from "dayjs";
 import joi from "joi";
 
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
-import { ObjectID } from "bson";
 dotenv.config();
 
 const app = express();
@@ -89,7 +88,7 @@ app.get("/participants", async (req, res) => {
       .toArray();
     mongoClient.close();
     res.send(listParticipants);
-  } catch (err) {
+  } catch {
     mongoClient.close();
     res.sendStatus(500);
   }
@@ -186,8 +185,7 @@ app.post("/messages", async (req, res) => {
   if (validation.error) {
     const err = validation.error.details.map((detail) => detail.message);
     mongoClient.close();
-    res.status(422).send(err);
-    return;
+    return res.status(422).send(err);
   }
 
   const participantLogged = await db
@@ -196,8 +194,7 @@ app.post("/messages", async (req, res) => {
     .toArray();
   if (participantLogged.length === 0) {
     mongoClient.close();
-    res.status(422).send("user does not have permission");
-    return;
+    return res.status(422).send("user does not have permission");
   }
 
   try {
@@ -223,7 +220,7 @@ app.delete("/messages/:idMessage", async (req, res) => {
   try {
     const messageExist = await db
       .collection("messages")
-      .find({ _id: new ObjectID(idMessage) })
+      .find({ _id: new ObjectId(idMessage) })
       .toArray();
 
     if (messageExist.length === 0) {
@@ -235,7 +232,7 @@ app.delete("/messages/:idMessage", async (req, res) => {
     } else {
       await db
         .collection("messages")
-        .deleteOne({ _id: new ObjectID(idMessage) });
+        .deleteOne({ _id: new ObjectId(idMessage) });
       mongoClient.close();
       res.sendStatus(200);
     }
@@ -257,14 +254,13 @@ app.put("/messages/:idMessage", async (req, res) => {
   if (validation.error) {
     const err = validation.error.details.map((detail) => detail.message);
     mongoClient.close();
-    res.status(422).send(err);
-    return;
+    return res.status(422).send(err);
   }
 
   try {
     const messageExist = await db
       .collection("messages")
-      .find({ _id: new ObjectID(idMessage) })
+      .find({ _id: new ObjectId(idMessage) })
       .toArray();
 
     if (messageExist.length === 0) {
@@ -277,7 +273,7 @@ app.put("/messages/:idMessage", async (req, res) => {
       await db
         .collection("messages")
         .updateOne(
-          { _id: new ObjectID(idMessage) },
+          { _id: new ObjectId(idMessage) },
           { $set: { ...message, time: dayjs().format("HH:mm:ss").toString() } }
         );
       mongoClient.close();
@@ -301,16 +297,15 @@ app.post("/status", async (req, res) => {
       .toArray();
 
     if (participant.length > 0) {
-      const status = await db.collection("participant").updateOne(
+      await db.collection("participant").updateOne(
         {
           _id: participant[0]._id,
         },
         { $set: { lastStatus: Date.now() } }
       );
-      if (status) {
-        mongoClient.close();
-        res.sendStatus(200);
-      }
+
+      mongoClient.close();
+      res.sendStatus(200);
     } else {
       mongoClient.close();
       res.sendStatus(404);

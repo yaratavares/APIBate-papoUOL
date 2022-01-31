@@ -98,7 +98,7 @@ app.get("/participants", async (req, res) => {
 app.post("/participants", async (req, res) => {
   const { mongoClient, db } = await connectMongo(res);
 
-  const nameTreated = stripHtml(req.body.name);
+  const nameTreated = stripHtml(req.body.name || "");
   const participant = { name: nameTreated.result.trim() };
 
   const validation = participantSchema.validate(participant, {
@@ -107,8 +107,7 @@ app.post("/participants", async (req, res) => {
   if (validation.error) {
     const err = validation.error.details.map((detail) => detail.message);
     mongoClient.close();
-    res.status(422).send(err);
-    return;
+    return res.status(422).send(err);
   }
 
   const participantExist = await db
@@ -117,8 +116,7 @@ app.post("/participants", async (req, res) => {
     .toArray();
   if (participantExist.length !== 0) {
     mongoClient.close();
-    res.status(409).send("name already exists");
-    return;
+    return res.status(409).send("name already exists");
   }
 
   try {
@@ -173,11 +171,13 @@ app.post("/messages", async (req, res) => {
 
   let messageTreated = { ...req.body, from: req.headers.user };
 
-  for (let parameter in messageTreated) {
-    messageTreated = {
-      ...messageTreated,
-      [parameter]: stripHtml(messageTreated[parameter]).result.trim(),
-    };
+  if (messageTreated.from && messageTreated.to) {
+    for (let parameter in messageTreated) {
+      messageTreated = {
+        ...messageTreated,
+        [parameter]: stripHtml(messageTreated[parameter]).result.trim(),
+      };
+    }
   }
 
   const message = { ...messageTreated };
@@ -321,6 +321,6 @@ app.post("/status", async (req, res) => {
   }
 });
 
-app.listen(5000, () => {
-  console.log("Servidor rodando na porta 5000");
+app.listen(4000, () => {
+  console.log("Servidor rodando na porta 4000");
 });
